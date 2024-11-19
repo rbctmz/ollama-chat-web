@@ -24,6 +24,15 @@
   - Анимации и визуальные эффекты
   - Профессиональное оформление
 
+## 🌟 Features
+
+- 💬 Real-time chat interface with Ollama AI models
+- 🔄 Dynamic model selection from available Ollama models
+- 🎨 Beautiful and responsive UI with syntax highlighting
+- 📝 Markdown support with code highlighting
+- ⚡ Fast and lightweight
+- 🔒 Secure local deployment
+
 ## 🛠️ Технологический стек
 
 ### Backend
@@ -38,6 +47,32 @@
 - highlight.js для подсветки кода
 - Font Awesome иконки
 - Адаптивная верстка
+
+## 🛠️ Configuration
+
+The server can be configured through environment variables or by modifying the `CONFIG` object in `server.js`:
+
+```javascript
+const CONFIG = {
+  defaultModel: 'qwen2.5-coder:3b', // Default model to use if none specified
+  timeout: 180000,                  // Request timeout in milliseconds
+  maxOutputLength: 2000,            // Maximum length of model output
+  ollamaApi: 'http://127.0.0.1:11434' // Ollama API endpoint
+};
+```
+
+### Available Models
+
+The application automatically detects and lists all available Ollama models installed on your system. You can:
+
+- View all available models in the dropdown menu
+- Switch between models during chat
+- Set a default model in the configuration
+
+To add more models, install them through Ollama CLI:
+```bash
+ollama pull [model-name]
+```
 
 ## 📋 Требования
 

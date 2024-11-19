@@ -1,20 +1,59 @@
 // Function to check if server is running
 async function checkServer() {
     try {
-        const response = await fetch('http://localhost:3000/api/chat', {
-            method: 'OPTIONS'
-        });
-        return response.ok;
+        const response = await fetch('http://localhost:3000/api/health');
+        const data = await response.json();
+        return { isConnected: true, model: data.model };
     } catch (error) {
         console.error('[Client] Server check failed:', error);
-        return false;
+        return { isConnected: false };
+    }
+}
+
+// Function to load available models
+async function loadModels() {
+    try {
+        const response = await fetch('http://localhost:3000/api/models');
+        const data = await response.json();
+        return data.models || [];
+    } catch (error) {
+        console.error('[Client] Failed to load models:', error);
+        return [];
+    }
+}
+
+// Update model selector
+async function updateModelSelector() {
+    const selector = document.getElementById('modelSelector');
+    const models = await loadModels();
+    
+    if (models.length > 0) {
+        // Get current server status to know default model
+        const { model: defaultModel } = await checkServer();
+        
+        // Clear existing options
+        selector.innerHTML = '';
+        
+        // Add models to selector
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            if (model.name === defaultModel) {
+                option.selected = true;
+            }
+            selector.appendChild(option);
+        });
+    } else {
+        selector.innerHTML = '<option value="">No models available</option>';
     }
 }
 
 // Update status display
-function updateStatus(isConnected) {
+function updateStatus(status) {
     const statusElement = document.getElementById('serverStatus');
     if (statusElement) {
+        const { isConnected } = status;
         statusElement.textContent = isConnected ? 'Connected' : 'Disconnected';
         statusElement.style.backgroundColor = isConnected ? '#d4edda' : '#f8d7da';
         statusElement.style.color = isConnected ? '#155724' : '#721c24';
@@ -23,12 +62,16 @@ function updateStatus(isConnected) {
 
 // Check server status periodically
 setInterval(async () => {
-    const isConnected = await checkServer();
-    updateStatus(isConnected);
+    const status = await checkServer();
+    updateStatus(status);
 }, 5000);
 
-// Initial server check
-checkServer().then(updateStatus);
+// Initial server and models check
+(async () => {
+    const status = await checkServer();
+    updateStatus(status);
+    await updateModelSelector();
+})();
 
 // Configure marked.js with custom renderer
 const renderer = new marked.Renderer();
@@ -156,28 +199,18 @@ function removeTypingIndicator() {
 
 // Handle message sending
 async function sendMessage() {
-    const input = document.getElementById('messageInput');
-    const sendButton = document.getElementById('sendButton');
-    const message = input.value.trim();
+    const messageInput = document.getElementById('messageInput');
+    const message = messageInput.value.trim();
+    const modelSelector = document.getElementById('modelSelector');
+    const selectedModel = modelSelector.value;
 
     if (!message) return;
 
-    // Disable input and button
-    input.disabled = true;
-    sendButton.disabled = true;
+    // Clear input
+    messageInput.value = '';
 
     // Add user message to chat
     addMessage(message, true);
-    input.value = '';
-
-    // Check server before sending
-    const isServerRunning = await checkServer();
-    if (!isServerRunning) {
-        showError('Server is not running. Please start the server and try again.');
-        input.disabled = false;
-        sendButton.disabled = false;
-        return;
-    }
 
     // Show typing indicator
     showTypingIndicator();
@@ -188,7 +221,10 @@ async function sendMessage() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ message })
+            body: JSON.stringify({
+                message,
+                model: selectedModel
+            })
         });
 
         if (!response.ok) {
@@ -197,18 +233,18 @@ async function sendMessage() {
         }
 
         const data = await response.json();
+        
+        // Remove typing indicator
         removeTypingIndicator();
+        
+        // Add AI response to chat
         addMessage(data.response);
+        
     } catch (error) {
+        console.error('[Client] Error:', error);
         removeTypingIndicator();
         showError(error.message);
-        console.error('[Client] Error:', error);
     }
-
-    // Re-enable input and button
-    input.disabled = false;
-    sendButton.disabled = false;
-    input.focus();
 }
 
 // Handle Enter key in input

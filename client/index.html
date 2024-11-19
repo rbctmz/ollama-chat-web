@@ -33,6 +33,25 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .model-selector {
+            padding: 6px 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            font-size: 14px;
+            background-color: white;
+            cursor: pointer;
+        }
+        .model-selector:focus {
+            outline: none;
+            border-color: #007bff;
         }
         .title {
             font-size: 24px;
@@ -234,7 +253,12 @@
     <div class="container">
         <div class="header">
             <h1 class="title">Ollama Chat</h1>
-            <div id="serverStatus">Checking server...</div>
+            <div class="header-controls">
+                <select id="modelSelector" class="model-selector" title="Select AI model">
+                    <option value="">Loading models...</option>
+                </select>
+                <div id="serverStatus">Checking connection...</div>
+            </div>
         </div>
         <div class="chat-container">
             <div id="chatHistory"></div>

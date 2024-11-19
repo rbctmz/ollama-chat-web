@@ -7,7 +7,7 @@ app.use(express.json());
 
 // Configuration
 const CONFIG = {
-  model: 'qwen2.5-coder:3b',
+  defaultModel: 'qwen2.5-coder:3b',
   timeout: 180000,  // 3 minutes
   maxOutputLength: 2000,
   ollamaApi: 'http://127.0.0.1:11434'
@@ -52,24 +52,33 @@ function formatResponse(text) {
   return text;
 }
 
-// Check if Ollama is running and get model list
-async function checkOllama() {
+// Get list of available models
+async function getAvailableModels() {
   try {
     const response = await fetch(`${CONFIG.ollamaApi}/api/tags`);
     if (!response.ok) {
       throw new Error('Failed to connect to Ollama API');
     }
-    
     const data = await response.json();
-    const models = data.models || [];
-    const modelExists = models.some(m => m.name === CONFIG.model);
+    return data.models || [];
+  } catch (error) {
+    console.error('[Models] Failed to get models:', error.message);
+    throw error;
+  }
+}
+
+// Check if Ollama is running and get model list
+async function checkOllama() {
+  try {
+    const models = await getAvailableModels();
+    const modelExists = models.some(m => m.name === CONFIG.defaultModel);
     
     if (modelExists) {
-      console.log('[Startup] Ollama is available and model', CONFIG.model, 'is present');
+      console.log('[Startup] Ollama is available and model', CONFIG.defaultModel, 'is present');
       return true;
     } else {
-      console.error('[Startup] Model', CONFIG.model, 'not found. Available models:', models.map(m => m.name).join(', '));
-      throw new Error(`Model ${CONFIG.model} not found. Please install it first with: ollama pull ${CONFIG.model}`);
+      console.error('[Startup] Model', CONFIG.defaultModel, 'not found. Available models:', models.map(m => m.name).join(', '));
+      throw new Error(`Model ${CONFIG.defaultModel} not found. Please install it first with: ollama pull ${CONFIG.defaultModel}`);
     }
   } catch (error) {
     console.error('[Startup] Ollama not responding:', error.message);
@@ -78,8 +87,8 @@ async function checkOllama() {
 }
 
 // Generate response using Ollama API
-async function generateResponse(message) {
-  console.log('[Ollama] Starting request...');
+async function generateResponse(message, model = CONFIG.defaultModel) {
+  console.log(`[Ollama] Starting request with model ${model}...`);
   const startTime = Date.now();
   
   const controller = new AbortController();
@@ -94,7 +103,7 @@ async function generateResponse(message) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: CONFIG.model,
+        model: model,
         prompt: message,
         stream: false,
         options: {
@@ -153,28 +162,35 @@ app.use((req, res, next) => {
 app.get('/api/health', async (req, res) => {
   try {
     await checkOllama();
-    res.json({ status: 'ok', model: CONFIG.model });
+    res.json({ status: 'ok', model: CONFIG.defaultModel });
   } catch (error) {
     res.status(503).json({ status: 'error', error: error.message });
   }
 });
 
+// Models endpoint
+app.get('/api/models', async (req, res) => {
+  try {
+    const models = await getAvailableModels();
+    res.json({ models });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
-  const message = req.body.message;
-  console.log('\n[API] Received message:', message);
-
-  if (!message || typeof message !== 'string') {
-    console.log('[API] Error: Invalid message format');
-    return res.status(400).json({ error: 'Invalid message' });
+  const { message, model } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: 'Message is required' });
   }
 
   try {
     // Проверяем доступность Ollama перед каждым запросом
     await checkOllama();
     
-    console.log('[API] Processing message with model:', CONFIG.model);
-    const response = await generateResponse(message);
+    console.log('[API] Processing message with model:', model || CONFIG.defaultModel);
+    const response = await generateResponse(message, model || CONFIG.defaultModel);
     
     if (!response || response.length === 0) {
       throw new Error('Empty response from model');
@@ -195,7 +211,7 @@ app.post('/api/chat', async (req, res) => {
       errorMessage = 'Ollama service is unavailable. Please make sure Ollama is running.';
     } else if (error.message.includes('Model not found')) {
       status = 503;
-      errorMessage = `Required model is not installed. Please run: ollama pull ${CONFIG.model}`;
+      errorMessage = `Required model is not installed. Please run: ollama pull ${CONFIG.defaultModel}`;
     }
     
     res.status(status).json({ error: errorMessage });
@@ -239,7 +255,7 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`\n[Server] API server is running on http://localhost:${PORT}`);
       console.log('[Server] Configuration:');
-      console.log('  - Model:', CONFIG.model);
+      console.log('  - Model:', CONFIG.defaultModel);
       console.log('  - Timeout:', CONFIG.timeout/1000, 'seconds');
       console.log('  - Max output length:', CONFIG.maxOutputLength, 'characters');
       console.log('  - Ollama API:', CONFIG.ollamaApi);
