@@ -167,27 +167,40 @@ function copyCode(icon) {
 }
 
 // Add message to chat history
-function addMessage(content, isUser = false) {
+function addMessage(content, isUser = false, messageId = null) {
     const chatHistory = document.getElementById('chatHistory');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
     
-    const messageContent = document.createElement('div');
-    messageContent.className = 'message-content';
+    // Если указан ID, пытаемся найти существующее сообщение
+    let messageDiv = messageId ? document.getElementById(messageId) : null;
     
-    // Parse markdown and render HTML for assistant messages
-    if (!isUser) {
-        messageContent.innerHTML = marked.parse(content);
-        // Add click handlers for copy icons
-        messageContent.querySelectorAll('.copy-icon').forEach(icon => {
-            icon.onclick = () => copyCode(icon);
-        });
-    } else {
-        messageContent.textContent = content;
+    if (!messageDiv) {
+        messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+        if (messageId) {
+            messageDiv.id = messageId;
+        }
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        messageDiv.appendChild(contentDiv);
+        
+        chatHistory.appendChild(messageDiv);
     }
     
-    messageDiv.appendChild(messageContent);
-    chatHistory.appendChild(messageDiv);
+    const contentDiv = messageDiv.querySelector('.message-content');
+    if (isUser) {
+        contentDiv.textContent = content;
+    } else {
+        contentDiv.innerHTML = marked.parse(content);
+        // Добавляем кнопки копирования к блокам кода
+        messageDiv.querySelectorAll('pre code').forEach((block) => {
+            const copyButton = document.createElement('i');
+            copyButton.className = 'fas fa-copy code-copy-icon';
+            copyButton.onclick = () => copyCode(copyButton);
+            block.parentNode.insertBefore(copyButton, block);
+        });
+    }
+    
     chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
@@ -276,13 +289,53 @@ async function sendMessage() {
             throw new Error(error.error || 'Failed to get response');
         }
 
-        const data = await response.json();
+        // Создаем уникальный ID для сообщения
+        const messageId = 'msg-' + Date.now();
+        let currentResponse = '';
         
-        // Remove typing indicator
+        // Создаем читателя для потока
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        // Удаляем индикатор загрузки и создаем пустое сообщение
         removeTypingIndicator();
-        
-        // Add AI response to chat
-        addMessage(data.response);
+        addMessage('', false, messageId);
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                // Декодируем полученные данные
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+
+                // Обрабатываем каждую строку
+                for (const line of lines) {
+                    if (!line.trim() || !line.startsWith('data: ')) continue;
+
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        const parsed = JSON.parse(data);
+                        
+                        if (parsed.error) {
+                            throw new Error(parsed.error);
+                        }
+                        
+                        if (parsed.response) {
+                            currentResponse += parsed.response;
+                            addMessage(currentResponse, false, messageId);
+                        }
+                    } catch (e) {
+                        console.warn('[Stream] Failed to parse chunk:', e);
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
         
     } catch (error) {
         console.error('[Client] Error:', error);

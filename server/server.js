@@ -126,7 +126,7 @@ async function checkOllama() {
 }
 
 // Generate response using Ollama API
-async function generateResponse(message, model = CONFIG.defaultModel) {
+async function generateResponse(message, model = CONFIG.defaultModel, res = null) {
   console.log(`[Ollama] Starting request with model ${model}...`);
   const startTime = Date.now();
   
@@ -144,7 +144,7 @@ async function generateResponse(message, model = CONFIG.defaultModel) {
       body: JSON.stringify({
         model: model,
         prompt: message,
-        stream: false,
+        stream: true,
         options: {
           temperature: 0.7,
           top_p: 0.9,
@@ -159,11 +159,52 @@ async function generateResponse(message, model = CONFIG.defaultModel) {
       throw new Error(error.error || 'Failed to generate response');
     }
 
+    // Для потокового режима
+    if (res) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      let fullResponse = '';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.trim() === '') continue;
+            try {
+              const data = JSON.parse(line);
+              fullResponse += data.response;
+              // Отправляем каждый кусочек ответа клиенту
+              res.write(`data: ${JSON.stringify({ response: data.response })}\n\n`);
+            } catch (e) {
+              console.warn('[Stream] Failed to parse line:', line);
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+
+      const elapsed = (Date.now() - startTime) / 1000;
+      console.log(`[Ollama] Streaming request finished after ${elapsed.toFixed(1)}s`);
+      return fullResponse;
+    }
+    
+    // Для обычного режима (обратная совместимость)
     const data = await response.json();
     const elapsed = (Date.now() - startTime) / 1000;
     console.log(`[Ollama] Request finished after ${elapsed.toFixed(1)}s`);
-    
-    // Format the response if it contains code
     return formatResponse(data.response);
   } catch (error) {
     if (error.name === 'AbortError') {
@@ -220,40 +261,24 @@ app.get('/api/models', async (req, res) => {
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
   const { message, model } = req.body;
+  
   if (!message) {
-    return res.status(400).json({ error: 'Message is required' });
+    res.status(400).json({ error: 'Message is required' });
+    return;
   }
-
+  
   try {
-    // Проверяем доступность Ollama перед каждым запросом
-    await checkOllama();
-    
-    console.log('[API] Processing message with model:', model || CONFIG.defaultModel);
-    const response = await generateResponse(message, model || CONFIG.defaultModel);
-    
-    if (!response || response.length === 0) {
-      throw new Error('Empty response from model');
-    }
-    
-    console.log('[API] Success! Response length:', response.length);
-    res.json({ response });
+    await generateResponse(message, model || CONFIG.defaultModel, res);
   } catch (error) {
-    console.error('[API] Error:', error.message);
-    let status = 500;
-    let errorMessage = error.message;
-    
-    if (error.message.includes('Timeout')) {
-      status = 504;
-      errorMessage = 'Request timed out. Please try again.';
-    } else if (error.message.includes('Ollama server not running')) {
-      status = 503;
-      errorMessage = 'Ollama service is unavailable. Please make sure Ollama is running.';
-    } else if (error.message.includes('Model not found')) {
-      status = 503;
-      errorMessage = `Required model is not installed. Please run: ollama pull ${CONFIG.defaultModel}`;
+    console.error('[Chat] Error:', error.message);
+    // Для потокового режима отправляем ошибку в формате SSE
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      res.status(500).json({ error: error.message });
     }
-    
-    res.status(status).json({ error: errorMessage });
   }
 });
 
