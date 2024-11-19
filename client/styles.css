@@ -21,6 +21,8 @@
   --typing-indicator-bg-light: #e9ecef;
   --typing-indicator-text-light: #6c757d;
   --typing-indicator-dot-light: #007bff;
+  --toast-bg-color-light: #007bff;
+  --toast-text-color-light: #fff;
   
   /* Dark theme variables */
   --bg-color-dark: #1a1a1a;
@@ -44,6 +46,8 @@
   --typing-indicator-bg-dark: #383838;
   --typing-indicator-text-dark: #a0a0a0;
   --typing-indicator-dot-dark: #4da3ff;
+  --toast-bg-color-dark: #4da3ff;
+  --toast-text-color-dark: #fff;
 
   /* Default theme (light) */
   --bg-color: var(--bg-color-light);
@@ -66,6 +70,8 @@
   --typing-indicator-bg: var(--typing-indicator-bg-light);
   --typing-indicator-text: var(--typing-indicator-text-light);
   --typing-indicator-dot: var(--typing-indicator-dot-light);
+  --toast-bg-color: var(--toast-bg-color-light);
+  --toast-text-color: var(--toast-text-color-light);
 }
 
 /* Dark theme */
@@ -90,6 +96,8 @@
   --typing-indicator-bg: var(--typing-indicator-bg-dark);
   --typing-indicator-text: var(--typing-indicator-text-dark);
   --typing-indicator-dot: var(--typing-indicator-dot-dark);
+  --toast-bg-color: var(--toast-bg-color-dark);
+  --toast-text-color: var(--toast-text-color-dark);
 }
 
 body { 
@@ -375,6 +383,28 @@ body {
 #theme-toggle:hover {
   transform: scale(1.1);
   background-color: var(--accent-hover);
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--toast-bg-color);
+  color: var(--toast-text-color);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.toast.show {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Animations */

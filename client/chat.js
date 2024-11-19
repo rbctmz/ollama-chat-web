@@ -192,16 +192,10 @@ function addMessage(content, isUser = false, messageId = null) {
         contentDiv.textContent = content;
     } else {
         contentDiv.innerHTML = marked.parse(content);
-        // Добавляем кнопки копирования к блокам кода
-        messageDiv.querySelectorAll('pre code').forEach((block) => {
-            const copyButton = document.createElement('i');
-            copyButton.className = 'fas fa-copy code-copy-icon';
-            copyButton.onclick = () => copyCode(copyButton);
-            block.parentNode.insertBefore(copyButton, block);
-        });
     }
     
-    chatHistory.scrollTop = chatHistory.scrollHeight;
+    messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    return messageDiv;
 }
 
 // Show error message
@@ -273,6 +267,15 @@ async function sendMessage() {
     showTypingIndicator();
 
     try {
+        // Создаем уникальный ID для сообщения
+        const messageId = 'msg-' + Date.now();
+        let currentResponse = '';
+
+        // Создаем пустое сообщение для ответа
+        removeTypingIndicator();
+        addMessage('', false, messageId);
+
+        // Отправляем запрос и получаем поток событий
         const response = await fetch('http://localhost:3000/api/chat', {
             method: 'POST',
             headers: {
@@ -285,58 +288,71 @@ async function sendMessage() {
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to get response');
+            throw new Error('Network response was not ok');
         }
 
-        // Создаем уникальный ID для сообщения
-        const messageId = 'msg-' + Date.now();
-        let currentResponse = '';
-        
-        // Создаем читателя для потока
-        const reader = response.body.getReader();
+        // Создаем TextDecoder для декодирования потока
         const decoder = new TextDecoder();
+        let buffer = '';
 
-        // Удаляем индикатор загрузки и создаем пустое сообщение
-        removeTypingIndicator();
-        addMessage('', false, messageId);
+        // Получаем поток данных
+        const reader = response.body.getReader();
 
         try {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                // Декодируем полученные данные
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                // Декодируем chunk и добавляем к буферу
+                buffer += decoder.decode(value, { stream: true });
 
-                // Обрабатываем каждую строку
+                // Разбиваем буфер на строки
+                const lines = buffer.split('\n');
+                
+                // Оставляем последнюю (возможно неполную) строку в буфере
+                buffer = lines.pop() || '';
+
+                // Обрабатываем полные строки
                 for (const line of lines) {
                     if (!line.trim() || !line.startsWith('data: ')) continue;
 
-                    const data = line.slice(6);
-                    if (data === '[DONE]') continue;
+                    const eventData = line.slice(6);
+                    if (eventData === '[DONE]') continue;
 
                     try {
-                        const parsed = JSON.parse(data);
-                        
-                        if (parsed.error) {
-                            throw new Error(parsed.error);
+                        const data = JSON.parse(eventData);
+                        if (data.error) {
+                            throw new Error(data.error);
                         }
-                        
-                        if (parsed.response) {
-                            currentResponse += parsed.response;
+                        if (data.response) {
+                            currentResponse += data.response;
                             addMessage(currentResponse, false, messageId);
                         }
                     } catch (e) {
-                        console.warn('[Stream] Failed to parse chunk:', e);
+                        console.warn('[Stream] Failed to parse event data:', e);
+                    }
+                }
+            }
+
+            // Обрабатываем оставшиеся данные в буфере
+            if (buffer.trim() && buffer.startsWith('data: ')) {
+                const eventData = buffer.slice(6);
+                if (eventData !== '[DONE]') {
+                    try {
+                        const data = JSON.parse(eventData);
+                        if (data.response) {
+                            currentResponse += data.response;
+                            addMessage(currentResponse, false, messageId);
+                        }
+                    } catch (e) {
+                        console.warn('[Stream] Failed to parse final event data:', e);
                     }
                 }
             }
         } finally {
             reader.releaseLock();
         }
-        
+
     } catch (error) {
         console.error('[Client] Error:', error);
         removeTypingIndicator();

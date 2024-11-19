@@ -161,9 +161,12 @@ async function generateResponse(message, model = CONFIG.defaultModel, res = null
 
     // Для потокового режима
     if (res) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
 
       let fullResponse = '';
       const reader = response.body.getReader();
@@ -182,7 +185,6 @@ async function generateResponse(message, model = CONFIG.defaultModel, res = null
             try {
               const data = JSON.parse(line);
               fullResponse += data.response;
-              // Отправляем каждый кусочек ответа клиенту
               res.write(`data: ${JSON.stringify({ response: data.response })}\n\n`);
             } catch (e) {
               console.warn('[Stream] Failed to parse line:', line);
@@ -193,7 +195,7 @@ async function generateResponse(message, model = CONFIG.defaultModel, res = null
         reader.releaseLock();
       }
 
-      res.write(`data: [DONE]\n\n`);
+      res.write('data: [DONE]\n\n');
       res.end();
 
       const elapsed = (Date.now() - startTime) / 1000;
@@ -263,22 +265,64 @@ app.post('/api/chat', async (req, res) => {
   const { message, model } = req.body;
   
   if (!message) {
-    res.status(400).json({ error: 'Message is required' });
-    return;
+    return res.status(400).json({ error: 'Message is required' });
   }
-  
+
   try {
-    await generateResponse(message, model || CONFIG.defaultModel, res);
-  } catch (error) {
-    console.error('[Chat] Error:', error.message);
-    // Для потокового режима отправляем ошибку в формате SSE
-    if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
-    } else {
-      res.status(500).json({ error: error.message });
+    // Устанавливаем заголовки для SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    const response = await fetch(`${CONFIG.ollamaApi}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: model || CONFIG.defaultModel,
+        prompt: message,
+        stream: true,
+        options: {
+          temperature: 0.7,
+          top_p: 0.9,
+          top_k: 40,
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to generate response');
     }
+
+    // Создаем поток для чтения ответа
+    for await (const chunk of response.body) {
+      const lines = chunk.toString().split('\n');
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        
+        try {
+          const data = JSON.parse(line);
+          if (data.response) {
+            res.write(`data: ${JSON.stringify({ response: data.response })}\n\n`);
+          }
+        } catch (e) {
+          console.warn('[Stream] Failed to parse line:', e);
+        }
+      }
+    }
+
+    // Отправляем завершающее событие
+    res.write('data: [DONE]\n\n');
+    res.end();
+
+  } catch (error) {
+    console.error('[Server] Error:', error);
+    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
   }
 });
 
