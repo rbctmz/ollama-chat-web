@@ -20,6 +20,7 @@
   --error-text-light: #fff;
   --typing-indicator-bg-light: #e9ecef;
   --typing-indicator-text-light: #6c757d;
+  --typing-indicator-dot-light: #007bff;
   
   /* Dark theme variables */
   --bg-color-dark: #1a1a1a;
@@ -42,6 +43,7 @@
   --error-text-dark: #fff;
   --typing-indicator-bg-dark: #383838;
   --typing-indicator-text-dark: #a0a0a0;
+  --typing-indicator-dot-dark: #4da3ff;
 
   /* Default theme (light) */
   --bg-color: var(--bg-color-light);
@@ -63,6 +65,7 @@
   --error-text: var(--error-text-light);
   --typing-indicator-bg: var(--typing-indicator-bg-light);
   --typing-indicator-text: var(--typing-indicator-text-light);
+  --typing-indicator-dot: var(--typing-indicator-dot-light);
 }
 
 /* Dark theme */
@@ -86,6 +89,7 @@
   --error-text: var(--error-text-dark);
   --typing-indicator-bg: var(--typing-indicator-bg-dark);
   --typing-indicator-text: var(--typing-indicator-text-dark);
+  --typing-indicator-dot: var(--typing-indicator-dot-dark);
 }
 
 body { 
@@ -250,13 +254,57 @@ body {
   cursor: not-allowed;
 }
 
+#sendButton.loading {
+  position: relative;
+  color: transparent;
+}
+
+#sendButton.loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin: -8px 0 0 -8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: buttonSpinner 0.8s linear infinite;
+}
+
+@keyframes buttonSpinner {
+  to { transform: rotate(360deg); }
+}
+
 .typing-indicator {
-  padding: 10px 15px;
+  padding: 12px 20px;
   background-color: var(--typing-indicator-bg);
   border-radius: 15px;
   color: var(--typing-indicator-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.typing-indicator::after {
+  content: '';
   display: inline-block;
-  animation: pulse 1.5s infinite;
+  width: 32px;
+  height: 8px;
+  background-image: radial-gradient(circle 3px, var(--typing-indicator-dot) 100%, transparent 0),
+                    radial-gradient(circle 3px, var(--typing-indicator-dot) 100%, transparent 0),
+                    radial-gradient(circle 3px, var(--typing-indicator-dot) 100%, transparent 0);
+  background-repeat: no-repeat;
+  background-position: 0 center, 12px center, 24px center;
+  animation: typingAnimation 1s infinite;
+}
+
+@keyframes typingAnimation {
+  0% { opacity: 0.2; }
+  20% { opacity: 1; }
+  100% { opacity: 0.2; }
 }
 
 .error-message {

@@ -215,11 +215,16 @@ function showTypingIndicator() {
     
     const indicator = document.createElement('div');
     indicator.className = 'typing-indicator';
-    indicator.textContent = 'Thinking...';
+    indicator.textContent = 'Ollama is thinking';
     
     typingDiv.appendChild(indicator);
     chatHistory.appendChild(typingDiv);
     chatHistory.scrollTop = chatHistory.scrollHeight;
+    
+    // Disable send button and add loading state
+    const sendButton = document.getElementById('sendButton');
+    sendButton.disabled = true;
+    sendButton.classList.add('loading');
 }
 
 // Remove typing indicator
@@ -228,6 +233,11 @@ function removeTypingIndicator() {
     if (indicator) {
         indicator.remove();
     }
+    
+    // Enable send button and remove loading state
+    const sendButton = document.getElementById('sendButton');
+    sendButton.disabled = false;
+    sendButton.classList.remove('loading');
 }
 
 // Handle message sending
@@ -239,8 +249,9 @@ async function sendMessage() {
 
     if (!message) return;
 
-    // Clear input
+    // Clear input and disable it
     messageInput.value = '';
+    messageInput.disabled = true;
 
     // Add user message to chat
     addMessage(message, true);
@@ -277,6 +288,10 @@ async function sendMessage() {
         console.error('[Client] Error:', error);
         removeTypingIndicator();
         showError(error.message);
+    } finally {
+        // Re-enable input
+        messageInput.disabled = false;
+        messageInput.focus();
     }
 }
 
