@@ -1,0 +1,14 @@
+{
+  "name": "ollama-chat-web",
+  "version": "1.0.0",
+  "description": "Web interface for Ollama chat",
+  "main": "server/server.js",
+  "scripts": {
+    "start-api": "node server/server.js",
+    "start-client": "node client/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "node-fetch": "^3.3.2"
+  }
+}
