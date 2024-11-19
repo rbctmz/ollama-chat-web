@@ -361,6 +361,35 @@ body {
   font-weight: 500;
 }
 
+.chat-header {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.theme-toggle,
+.clear-history {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.theme-toggle:hover,
+.clear-history:hover {
+  background-color: var(--hover-color);
+  transform: scale(1.1);
+}
+
+.clear-history {
+  color: var(--error-color);
+}
+
 #theme-toggle {
   position: fixed;
   top: 1rem;

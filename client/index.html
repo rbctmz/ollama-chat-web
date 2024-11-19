@@ -10,9 +10,6 @@
 
 </head>
 <body>
-    <button id="theme-toggle" aria-label="Toggle theme">
-        <i class="fas fa-moon"></i>
-    </button>
     <div class="container">
         <div class="header">
             <h1 class="title">Ollama Chat</h1>
@@ -24,7 +21,15 @@
             </div>
         </div>
         <div class="chat-container">
-            <div id="chatHistory"></div>
+            <div class="chat-header">
+                <button id="theme-toggle" class="theme-toggle" title="Переключить тему">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button id="clearHistory" class="clear-history" title="Очистить историю">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            <div id="chat" class="chat"></div>
             <div class="input-container">
                 <textarea id="messageInput" placeholder="Type your message..."></textarea>
                 <button id="sendButton" onclick="sendMessage()">

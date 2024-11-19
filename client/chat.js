@@ -25,11 +25,21 @@ function toggleTheme() {
     updateThemeIcon(newTheme);
 }
 
-// Initialize theme
-document.addEventListener('DOMContentLoaded', initializeTheme);
+// Initialize theme and chat history
+document.addEventListener('DOMContentLoaded', () => {
+    initializeTheme();
+    initializeChatHistory();
+});
 
 // Theme toggle button click handler
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+
+// Clear history button click handler
+document.getElementById('clearHistory').addEventListener('click', () => {
+    if (confirm('Вы уверены, что хотите очистить историю чата?')) {
+        clearChatHistory();
+    }
+});
 
 // Function to check if server is running
 async function checkServer() {
@@ -166,46 +176,80 @@ function copyCode(icon) {
     });
 }
 
-// Add message to chat history
-function addMessage(content, isUser = false, messageId = null) {
-    const chatHistory = document.getElementById('chatHistory');
-    
-    // Если указан ID, пытаемся найти существующее сообщение
-    let messageDiv = messageId ? document.getElementById(messageId) : null;
-    
-    if (!messageDiv) {
-        messageDiv = document.createElement('div');
-        messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
-        if (messageId) {
-            messageDiv.id = messageId;
+// Initialize chat history from localStorage
+function initializeChatHistory() {
+    const savedHistory = localStorage.getItem('chatHistory');
+    if (savedHistory) {
+        try {
+            const messages = JSON.parse(savedHistory);
+            const chat = document.getElementById('chat');
+            chat.innerHTML = ''; // Clear default content
+            
+            messages.forEach(msg => {
+                addMessage(msg.content, msg.isUser);
+            });
+        } catch (error) {
+            console.error('Failed to restore chat history:', error);
+            localStorage.removeItem('chatHistory');
         }
-        
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'message-content';
-        messageDiv.appendChild(contentDiv);
-        
-        chatHistory.appendChild(messageDiv);
     }
+}
+
+// Save message to localStorage
+function saveMessageToHistory(content, isUser) {
+    const savedHistory = localStorage.getItem('chatHistory');
+    const messages = savedHistory ? JSON.parse(savedHistory) : [];
+    messages.push({ 
+        content, 
+        isUser, 
+        timestamp: new Date().toISOString() 
+    });
+    localStorage.setItem('chatHistory', JSON.stringify(messages));
+}
+
+// Add message to chat
+function addMessage(content, isUser, messageId = null) {
+    const chat = document.getElementById('chat');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+    if (messageId) messageDiv.id = messageId;
     
-    const contentDiv = messageDiv.querySelector('.message-content');
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    
     if (isUser) {
         contentDiv.textContent = content;
     } else {
         contentDiv.innerHTML = marked.parse(content);
+        // Подсветка кода после рендеринга markdown
+        const codeBlocks = contentDiv.querySelectorAll('pre code');
+        codeBlocks.forEach(block => {
+            hljs.highlightElement(block);
+        });
     }
     
-    messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    messageDiv.appendChild(contentDiv);
+    chat.appendChild(messageDiv);
+    chat.scrollTop = chat.scrollHeight;
+    
     return messageDiv;
+}
+
+// Clear chat history
+function clearChatHistory() {
+    localStorage.removeItem('chatHistory');
+    const chat = document.getElementById('chat');
+    chat.innerHTML = '';
 }
 
 // Show error message
 function showError(message) {
-    const chatHistory = document.getElementById('chatHistory');
+    const chat = document.getElementById('chat');
     const errorDiv = document.createElement('div');
     errorDiv.className = 'error-message';
     errorDiv.textContent = message;
-    chatHistory.appendChild(errorDiv);
-    chatHistory.scrollTop = chatHistory.scrollHeight;
+    chat.appendChild(errorDiv);
+    chat.scrollTop = chat.scrollHeight;
     
     // Remove error message after 5 seconds
     setTimeout(() => {
@@ -215,7 +259,7 @@ function showError(message) {
 
 // Show typing indicator
 function showTypingIndicator() {
-    const chatHistory = document.getElementById('chatHistory');
+    const chat = document.getElementById('chat');
     const typingDiv = document.createElement('div');
     typingDiv.className = 'message assistant';
     typingDiv.id = 'typingIndicator';
@@ -225,8 +269,8 @@ function showTypingIndicator() {
     indicator.textContent = 'Ollama is thinking';
     
     typingDiv.appendChild(indicator);
-    chatHistory.appendChild(typingDiv);
-    chatHistory.scrollTop = chatHistory.scrollHeight;
+    chat.appendChild(typingDiv);
+    chat.scrollTop = chat.scrollHeight;
     
     // Disable send button and add loading state
     const sendButton = document.getElementById('sendButton');
@@ -236,9 +280,9 @@ function showTypingIndicator() {
 
 // Remove typing indicator
 function removeTypingIndicator() {
-    const indicator = document.getElementById('typingIndicator');
-    if (indicator) {
-        indicator.remove();
+    const typingIndicator = document.getElementById('typingIndicator');
+    if (typingIndicator) {
+        typingIndicator.remove();
     }
     
     // Enable send button and remove loading state
@@ -251,116 +295,87 @@ function removeTypingIndicator() {
 async function sendMessage() {
     const messageInput = document.getElementById('messageInput');
     const message = messageInput.value.trim();
-    const modelSelector = document.getElementById('modelSelector');
-    const selectedModel = modelSelector.value;
-
-    if (!message) return;
-
-    // Clear input and disable it
+    
+    if (message.length === 0) return;
+    
     messageInput.value = '';
-    messageInput.disabled = true;
-
-    // Add user message to chat
     addMessage(message, true);
-
-    // Show typing indicator
-    showTypingIndicator();
-
+    saveMessageToHistory(message, true);
+    
     try {
-        // Создаем уникальный ID для сообщения
-        const messageId = 'msg-' + Date.now();
-        let currentResponse = '';
-
-        // Создаем пустое сообщение для ответа
-        removeTypingIndicator();
-        addMessage('', false, messageId);
-
-        // Отправляем запрос и получаем поток событий
+        showTypingIndicator();
+        
+        const modelSelector = document.getElementById('modelSelector');
+        const selectedModel = modelSelector.value;
+        
         const response = await fetch('http://localhost:3000/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                message,
+                message: message,
                 model: selectedModel
             })
         });
 
         if (!response.ok) {
-            throw new Error('Network response was not ok');
+            throw new Error('Failed to get response from server');
         }
 
-        // Создаем TextDecoder для декодирования потока
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        // Получаем поток данных
         const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let responseMessage = '';
+        let messageDiv = null;
 
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+        while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) break;
 
-                // Декодируем chunk и добавляем к буферу
-                buffer += decoder.decode(value, { stream: true });
-
-                // Разбиваем буфер на строки
-                const lines = buffer.split('\n');
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+                if (!line.trim() || !line.startsWith('data: ')) continue;
                 
-                // Оставляем последнюю (возможно неполную) строку в буфере
-                buffer = lines.pop() || '';
-
-                // Обрабатываем полные строки
-                for (const line of lines) {
-                    if (!line.trim() || !line.startsWith('data: ')) continue;
-
-                    const eventData = line.slice(6);
-                    if (eventData === '[DONE]') continue;
-
-                    try {
-                        const data = JSON.parse(eventData);
-                        if (data.error) {
-                            throw new Error(data.error);
+                const data = line.slice(6); // Remove 'data: ' prefix
+                if (data === '[DONE]') continue;
+                
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.response) {
+                        responseMessage += parsed.response;
+                        
+                        if (!messageDiv) {
+                            messageDiv = addMessage(responseMessage, false);
+                        } else {
+                            const contentDiv = messageDiv.querySelector('.message-content');
+                            contentDiv.innerHTML = marked.parse(responseMessage);
+                            
+                            // Подсветка кода после обновления содержимого
+                            const codeBlocks = contentDiv.querySelectorAll('pre code');
+                            codeBlocks.forEach(block => {
+                                hljs.highlightElement(block);
+                            });
                         }
-                        if (data.response) {
-                            currentResponse += data.response;
-                            addMessage(currentResponse, false, messageId);
-                        }
-                    } catch (e) {
-                        console.warn('[Stream] Failed to parse event data:', e);
                     }
+                } catch (e) {
+                    console.warn('Failed to parse chunk:', e);
                 }
             }
+        }
 
-            // Обрабатываем оставшиеся данные в буфере
-            if (buffer.trim() && buffer.startsWith('data: ')) {
-                const eventData = buffer.slice(6);
-                if (eventData !== '[DONE]') {
-                    try {
-                        const data = JSON.parse(eventData);
-                        if (data.response) {
-                            currentResponse += data.response;
-                            addMessage(currentResponse, false, messageId);
-                        }
-                    } catch (e) {
-                        console.warn('[Stream] Failed to parse final event data:', e);
-                    }
-                }
-            }
-        } finally {
-            reader.releaseLock();
+        // Save the complete message
+        if (responseMessage) {
+            saveMessageToHistory(responseMessage, false);
         }
 
     } catch (error) {
-        console.error('[Client] Error:', error);
-        removeTypingIndicator();
-        showError(error.message);
+        console.error('Error:', error);
+        showError('Failed to get response from Ollama');
     } finally {
-        // Re-enable input
-        messageInput.disabled = false;
-        messageInput.focus();
+        removeTypingIndicator();
     }
 }
 
