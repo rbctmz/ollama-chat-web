@@ -52,6 +52,29 @@ function formatResponse(text) {
   return text;
 }
 
+// Check if model supports chat/generation
+async function checkModelCapabilities(modelName) {
+  try {
+    const response = await fetch(`${CONFIG.ollamaApi}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: modelName })
+    });
+    
+    if (!response.ok) {
+      console.warn(`[Models] Failed to check capabilities for ${modelName}`);
+      return false;
+    }
+    
+    const data = await response.json();
+    // Считаем модель подходящей, если она не является эмбеддинг-моделью
+    return !modelName.includes('embed');
+  } catch (error) {
+    console.warn(`[Models] Error checking capabilities for ${modelName}:`, error.message);
+    return false;
+  }
+}
+
 // Get list of available models
 async function getAvailableModels() {
   try {
@@ -60,7 +83,17 @@ async function getAvailableModels() {
       throw new Error('Failed to connect to Ollama API');
     }
     const data = await response.json();
-    return data.models || [];
+    const models = data.models || [];
+    
+    // Filter models that support generation
+    const supportedModels = await Promise.all(
+      models.map(async (model) => {
+        const supportsGeneration = await checkModelCapabilities(model.name);
+        return supportsGeneration ? model : null;
+      })
+    );
+    
+    return supportedModels.filter(model => model !== null);
   } catch (error) {
     console.error('[Models] Failed to get models:', error.message);
     throw error;
@@ -71,14 +104,20 @@ async function getAvailableModels() {
 async function checkOllama() {
   try {
     const models = await getAvailableModels();
+    if (models.length === 0) {
+      throw new Error('No models available for chat/generation');
+    }
+
     const modelExists = models.some(m => m.name === CONFIG.defaultModel);
-    
     if (modelExists) {
       console.log('[Startup] Ollama is available and model', CONFIG.defaultModel, 'is present');
       return true;
     } else {
-      console.error('[Startup] Model', CONFIG.defaultModel, 'not found. Available models:', models.map(m => m.name).join(', '));
-      throw new Error(`Model ${CONFIG.defaultModel} not found. Please install it first with: ollama pull ${CONFIG.defaultModel}`);
+      // Use the first available model instead
+      const firstModel = models[0].name;
+      console.log(`[Startup] Model ${CONFIG.defaultModel} not found. Using ${firstModel} instead`);
+      CONFIG.defaultModel = firstModel;
+      return true;
     }
   } catch (error) {
     console.error('[Startup] Ollama not responding:', error.message);
