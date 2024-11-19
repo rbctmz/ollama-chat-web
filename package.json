@@ -1,14 +1,28 @@
 {
   "name": "ollama-chat-web",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "Web interface for Ollama chat",
   "main": "server/server.js",
   "scripts": {
     "start-api": "node server/server.js",
-    "start-client": "node client/server.js"
+    "start-client": "node client/server.js",
+    "version": "node scripts/version.js && git add CHANGELOG.md",
+    "postversion": "git push && git push --tags"
   },
   "dependencies": {
     "express": "^4.21.1",
     "node-fetch": "^3.3.2"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rbctmz/ollama-chat-web.git"
+  },
+  "keywords": [
+    "ollama",
+    "chat",
+    "ai",
+    "web-interface"
+  ],
+  "author": "rbctmz",
+  "license": "MIT"
 }
